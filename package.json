@@ -11,8 +11,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@clerk/clerk-js": "^5.96.0",
-    "@clerk/clerk-react": "^5.49.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
     "jspdf": "^3.0.3",
