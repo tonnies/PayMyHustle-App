@@ -663,9 +663,9 @@ const InvoiceGeneratorAPI = () => {
 
   // Navigation component
   const renderNavigation = () => (
-    <div className="w-64 bg-card border-r border-border h-screen fixed left-0 top-0 z-30">
+    <div className="w-64 bg-card border-r border-border h-screen fixed left-0 top-0 z-30 animate-slide-in-right">
       <div className="p-6">
-        <h1 className="text-xl font-bold mb-6">Invoice Generator</h1>
+        <h1 className="text-xl font-bold mb-6 animate-fade-in-down">Invoice Generator</h1>
 
         {/* Search */}
         <div className="relative mb-6">
@@ -682,7 +682,7 @@ const InvoiceGeneratorAPI = () => {
         <nav className="space-y-2">
           <Button
             variant={currentView === 'dashboard' ? 'default' : 'ghost'}
-            className="w-full justify-start"
+            className="w-full justify-start btn-press transition-smooth hover:translate-x-1"
             onClick={() => setCurrentView('dashboard')}
           >
             <Home className="w-4 h-4 mr-2" />
@@ -691,7 +691,7 @@ const InvoiceGeneratorAPI = () => {
 
           <Button
             variant={currentView === 'createInvoice' ? 'default' : 'ghost'}
-            className="w-full justify-start"
+            className="w-full justify-start btn-press transition-smooth hover:translate-x-1"
             onClick={() => setCurrentView('createInvoice')}
           >
             <Plus className="w-4 h-4 mr-2" />
@@ -702,7 +702,7 @@ const InvoiceGeneratorAPI = () => {
 
           <Button
             variant={currentView === 'personalSettings' ? 'default' : 'ghost'}
-            className="w-full justify-start"
+            className="w-full justify-start btn-press transition-smooth hover:translate-x-1"
             onClick={() => setCurrentView('personalSettings')}
           >
             <User className="w-4 h-4 mr-2" />
@@ -711,7 +711,7 @@ const InvoiceGeneratorAPI = () => {
 
           <Button
             variant={currentView === 'bankingSettings' ? 'default' : 'ghost'}
-            className="w-full justify-start"
+            className="w-full justify-start btn-press transition-smooth hover:translate-x-1"
             onClick={() => setCurrentView('bankingSettings')}
           >
             <CreditCard className="w-4 h-4 mr-2" />
@@ -720,7 +720,7 @@ const InvoiceGeneratorAPI = () => {
 
           <Button
             variant={currentView === 'companySettings' ? 'default' : 'ghost'}
-            className="w-full justify-start"
+            className="w-full justify-start btn-press transition-smooth hover:translate-x-1"
             onClick={() => setCurrentView('companySettings')}
           >
             <Building className="w-4 h-4 mr-2" />
@@ -738,20 +738,20 @@ const InvoiceGeneratorAPI = () => {
     const recentInvoices = filteredInvoices.slice(-5).reverse();
 
     return (
-      <div className="space-y-6">
+      <div className="space-y-6 animate-fade-in-up">
         {invoices.length === 0 && companies.length === 0 && (
-          <Card>
+          <Card className="animate-scale-in">
             <CardHeader>
               <CardTitle>Welcome to Invoice Generator</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-gray-600 mb-4">Get started by setting up your personal and banking details, then create your first invoice.</p>
               <div className="flex gap-2">
-                <Button onClick={() => setCurrentView('personalSettings')} variant="outline">
+                <Button onClick={() => setCurrentView('personalSettings')} variant="outline" className="btn-press transition-smooth hover:shadow-md">
                   <User className="w-4 h-4 mr-2" />
                   Setup Personal Details
                 </Button>
-                <Button onClick={() => setCurrentView('createInvoice')}>
+                <Button onClick={() => setCurrentView('createInvoice')} className="btn-press transition-smooth hover:shadow-md">
                   <Plus className="w-4 h-4 mr-2" />
                   Create Invoice
                 </Button>
@@ -761,7 +761,7 @@ const InvoiceGeneratorAPI = () => {
         )}
 
         <div className="grid md:grid-cols-2 gap-6">
-          <Card>
+          <Card className="animate-fade-in-up stagger-1">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Building className="w-5 h-5" />
@@ -771,10 +771,10 @@ const InvoiceGeneratorAPI = () => {
             <CardContent>
               {filteredCompanies.length > 0 ? (
                 <div className="space-y-3">
-                  {filteredCompanies.map((company) => (
+                  {filteredCompanies.map((company, index) => (
                     <Card
                       key={company.id}
-                      className="cursor-pointer hover:shadow-md transition-shadow"
+                      className={`cursor-pointer hover-lift animate-fade-in-up stagger-${Math.min(index + 1, 5)}`}
                       onClick={() => {
                         setSelectedCompany(company);
                         setCurrentView('companyDetails');
@@ -803,7 +803,7 @@ const InvoiceGeneratorAPI = () => {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="animate-fade-in-up stagger-2">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <FileText className="w-5 h-5" />
@@ -813,12 +813,12 @@ const InvoiceGeneratorAPI = () => {
             <CardContent>
               {recentInvoices.length > 0 ? (
                 <div className="space-y-3">
-                  {recentInvoices.map((invoice) => {
+                  {recentInvoices.map((invoice, index) => {
                     const status = getInvoiceStatus(invoice);
                     return (
                       <Card
                         key={invoice.id}
-                        className="cursor-pointer hover:shadow-md transition-shadow"
+                        className={`cursor-pointer hover-lift animate-fade-in-up stagger-${Math.min(index + 1, 5)}`}
                         onClick={() => {
                           setPreviewInvoice(invoice);
                           setCurrentView('previewInvoice');
@@ -841,6 +841,7 @@ const InvoiceGeneratorAPI = () => {
                                   generatePDF(invoice);
                                 }}
                                 title="Download PDF"
+                                className="btn-press transition-smooth hover:scale-110"
                               >
                                 <Download className="w-4 h-4" />
                               </Button>
@@ -853,6 +854,7 @@ const InvoiceGeneratorAPI = () => {
                                   setCurrentView('previewInvoice');
                                 }}
                                 title="Preview"
+                                className="btn-press transition-smooth hover:scale-110"
                               >
                                 <Eye className="w-4 h-4" />
                               </Button>
@@ -864,7 +866,7 @@ const InvoiceGeneratorAPI = () => {
                                   handleDeleteInvoice(invoice);
                                 }}
                                 title="Delete"
-                                className="hover:text-red-600"
+                                className="btn-press transition-smooth hover:text-red-600 hover:scale-110"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </Button>
@@ -889,8 +891,8 @@ const InvoiceGeneratorAPI = () => {
 
   // Personal Settings component
   const renderPersonalSettings = () => (
-    <div className="space-y-6">
-      <Card>
+    <div className="space-y-6 animate-fade-in-up">
+      <Card className="animate-scale-in">
         <CardHeader>
           <CardTitle>Personal Details</CardTitle>
         </CardHeader>
@@ -945,7 +947,7 @@ const InvoiceGeneratorAPI = () => {
               onChange={(e) => setPersonalDetails(prev => ({...prev, footerText: e.target.value}))}
             />
           </div>
-          <Button onClick={savePersonalDetails} className="w-full" disabled={loading}>
+          <Button onClick={savePersonalDetails} className="w-full btn-press transition-smooth hover:shadow-lg" disabled={loading}>
             {loading ? 'Saving...' : 'Save Personal Details'}
           </Button>
         </CardContent>
@@ -955,8 +957,8 @@ const InvoiceGeneratorAPI = () => {
 
   // Banking Settings component
   const renderBankingSettings = () => (
-    <div className="space-y-6">
-      <Card>
+    <div className="space-y-6 animate-fade-in-up">
+      <Card className="animate-scale-in">
         <CardHeader>
           <CardTitle>Banking Details</CardTitle>
         </CardHeader>
@@ -1009,7 +1011,7 @@ const InvoiceGeneratorAPI = () => {
               onChange={(e) => setBankingDetails(prev => ({...prev, swiftCode: e.target.value}))}
             />
           </div>
-          <Button onClick={saveBankingDetails} className="w-full" disabled={loading}>
+          <Button onClick={saveBankingDetails} className="w-full btn-press transition-smooth hover:shadow-lg" disabled={loading}>
             {loading ? 'Saving...' : 'Save Banking Details'}
           </Button>
         </CardContent>
@@ -1022,15 +1024,15 @@ const InvoiceGeneratorAPI = () => {
     const filteredCompanies = filterCompanies(companies);
 
     return (
-      <div className="space-y-6">
-        <Card>
+      <div className="space-y-6 animate-fade-in-up">
+        <Card className="animate-scale-in">
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2">
                 <Building className="w-5 h-5" />
                 Company Management
               </CardTitle>
-              <Button onClick={() => setShowAddCompanyForm(true)}>
+              <Button onClick={() => setShowAddCompanyForm(true)} className="btn-press transition-smooth hover:shadow-md">
                 <Plus className="w-4 h-4 mr-2" />
                 Add Company
               </Button>
@@ -1169,7 +1171,7 @@ const InvoiceGeneratorAPI = () => {
     const status = getInvoiceStatus(previewInvoice);
 
     return (
-      <div className="space-y-6">
+      <div className="space-y-6 animate-fade-in-up">
         <div className="flex items-center gap-4 mb-6">
           <Button
             variant="outline"
@@ -1178,6 +1180,7 @@ const InvoiceGeneratorAPI = () => {
               setPreviewInvoice(null);
               setCurrentView('dashboard');
             }}
+            className="btn-press transition-smooth hover:shadow-md"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Dashboard
@@ -1185,6 +1188,7 @@ const InvoiceGeneratorAPI = () => {
           <Button
             onClick={() => generatePDF(previewInvoice)}
             disabled={loading}
+            className="btn-press transition-smooth hover:shadow-lg"
           >
             <Download className="w-4 h-4 mr-2" />
             {loading ? 'Generating...' : 'Download PDF'}
@@ -1193,6 +1197,7 @@ const InvoiceGeneratorAPI = () => {
             variant="outline"
             onClick={() => toggleInvoiceStatus(previewInvoice)}
             disabled={loading}
+            className="btn-press transition-smooth hover:shadow-md"
           >
             <Check className="w-4 h-4 mr-2" />
             Mark as {previewInvoice.status === 'paid' ? 'Pending' : 'Paid'}
@@ -1200,7 +1205,7 @@ const InvoiceGeneratorAPI = () => {
         </div>
 
         {/* Invoice Preview Card */}
-        <Card className="max-w-4xl mx-auto shadow-lg bg-white">
+        <Card className="max-w-4xl mx-auto shadow-lg bg-white animate-scale-in">
           {/* Header */}
           <div className="p-8 border-b">
             <div className="flex justify-between items-start">
@@ -1319,8 +1324,8 @@ const InvoiceGeneratorAPI = () => {
 
   // Create Invoice component
   const renderCreateInvoice = () => (
-    <div className="space-y-6">
-      <Card>
+    <div className="space-y-6 animate-fade-in-up">
+      <Card className="animate-scale-in">
         <CardHeader>
           <CardTitle>{editingInvoice ? 'Edit Invoice' : 'Create New Invoice'}</CardTitle>
         </CardHeader>
@@ -1403,7 +1408,7 @@ const InvoiceGeneratorAPI = () => {
           <div>
             <div className="flex justify-between items-center mb-4">
               <Label>Line Items</Label>
-              <Button type="button" size="sm" onClick={addLineItem}>
+              <Button type="button" size="sm" onClick={addLineItem} className="btn-press transition-smooth hover:shadow-md">
                 <Plus className="w-4 h-4 mr-2" />
                 Add Item
               </Button>
@@ -1484,11 +1489,12 @@ const InvoiceGeneratorAPI = () => {
           </div>
 
           <div className="flex gap-4">
-            <Button onClick={saveInvoice} disabled={loading}>
+            <Button onClick={saveInvoice} disabled={loading} className="btn-press transition-smooth hover:shadow-lg">
               {loading ? 'Saving...' : (editingInvoice ? 'Update Invoice' : 'Create Invoice')}
             </Button>
             <Button
               variant="outline"
+              className="btn-press transition-smooth"
               onClick={() => {
                 setCurrentView('dashboard');
                 setEditingInvoice(null);
@@ -1523,7 +1529,7 @@ const InvoiceGeneratorAPI = () => {
     const displayData = isEditing ? editingCompanyData : selectedCompany;
 
     return (
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-6xl mx-auto animate-fade-in-up">
         <Button
           variant="ghost"
           onClick={() => {
@@ -1531,7 +1537,7 @@ const InvoiceGeneratorAPI = () => {
             setSelectedCompany(null);
             setEditingCompanyData(null);
           }}
-          className="mb-6"
+          className="mb-6 btn-press transition-smooth hover:shadow-md"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Dashboard
@@ -1539,7 +1545,7 @@ const InvoiceGeneratorAPI = () => {
 
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Company Details Card */}
-          <Card className="lg:col-span-1">
+          <Card className="lg:col-span-1 animate-scale-in">
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span>Company Details</span>
@@ -1685,7 +1691,7 @@ const InvoiceGeneratorAPI = () => {
           </Card>
 
           {/* Invoices List */}
-          <Card className="lg:col-span-2">
+          <Card className="lg:col-span-2 animate-scale-in stagger-1">
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span>Invoices ({companyInvoices.length})</span>
@@ -1701,6 +1707,7 @@ const InvoiceGeneratorAPI = () => {
                     }));
                     setCurrentView('createInvoice');
                   }}
+                  className="btn-press transition-smooth hover:shadow-md"
                 >
                   <Plus className="w-4 h-4 mr-2" />
                   New Invoice
@@ -1710,12 +1717,12 @@ const InvoiceGeneratorAPI = () => {
             <CardContent>
               {companyInvoices.length > 0 ? (
                 <div className="space-y-3">
-                  {companyInvoices.map((invoice) => {
+                  {companyInvoices.map((invoice, index) => {
                     const status = getInvoiceStatus(invoice);
                     return (
                       <Card
                         key={invoice.id}
-                        className="cursor-pointer hover:shadow-md transition-shadow"
+                        className={`cursor-pointer hover-lift animate-fade-in-up stagger-${Math.min(index + 1, 5)}`}
                         onClick={() => {
                           setPreviewInvoice(invoice);
                           setCurrentView('previewInvoice');
@@ -1740,6 +1747,7 @@ const InvoiceGeneratorAPI = () => {
                                   generatePDF(invoice);
                                 }}
                                 title="Download PDF"
+                                className="btn-press transition-smooth hover:scale-110"
                               >
                                 <Download className="w-4 h-4" />
                               </Button>
@@ -1751,7 +1759,7 @@ const InvoiceGeneratorAPI = () => {
                                   handleDeleteInvoice(invoice);
                                 }}
                                 title="Delete"
-                                className="hover:text-red-600"
+                                className="btn-press transition-smooth hover:text-red-600 hover:scale-110"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </Button>
@@ -1793,9 +1801,9 @@ const InvoiceGeneratorAPI = () => {
   if (authLoading || (loading && companies.length === 0 && invoices.length === 0)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-2 text-gray-600">Loading...</p>
+        <div className="text-center animate-fade-in">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-gray-600 animate-pulse-soft">Loading...</p>
         </div>
       </div>
     );
@@ -1808,7 +1816,7 @@ const InvoiceGeneratorAPI = () => {
       <div className="flex-1 ml-64">
         <main className="p-6 pt-20">
           {showAlert.show && (
-            <Alert className={`mb-6 ${showAlert.type === 'error' ? 'border-red-500' : 'border-green-500'}`}>
+            <Alert className={`mb-6 animate-fade-in-down ${showAlert.type === 'error' ? 'border-red-500 bg-red-50' : 'border-green-500 bg-green-50'}`}>
               <AlertDescription>{showAlert.message}</AlertDescription>
             </Alert>
           )}
