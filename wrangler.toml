@@ -1,0 +1,14 @@
+name = "paymyhustle"
+compatibility_date = "2024-09-23"
+pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "paymyhustle-db"
+database_id = "eee3ccfb-01d0-4452-b9d8-9150776869bc"
+
+[env.production]
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "paymyhustle-db"
+database_id = "eee3ccfb-01d0-4452-b9d8-9150776869bc"
