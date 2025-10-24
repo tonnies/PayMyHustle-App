@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import apiClient from '../lib/api';
-import { useAuthContext } from '../contexts/ClerkAuthContext';
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import { Label } from "./ui/label"
@@ -16,7 +15,6 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 const InvoiceGeneratorAPI = () => {
-  const { user, isAuthenticated, loading: authLoading } = useAuthContext();
   const [currentView, setCurrentView] = useState('dashboard');
   const [companies, setCompanies] = useState([]);
   const [invoices, setInvoices] = useState([]);
@@ -73,12 +71,10 @@ const InvoiceGeneratorAPI = () => {
     }).format(amount);
   };
 
-  // Load initial data only when authentication is complete
+  // Load initial data on mount
   useEffect(() => {
-    if (!authLoading && isAuthenticated && user) {
-      loadAllData();
-    }
-  }, [authLoading, isAuthenticated, user]);
+    loadAllData();
+  }, []);
 
   const loadAllData = async () => {
     setLoading(true);
@@ -1798,7 +1794,7 @@ const InvoiceGeneratorAPI = () => {
     );
   };
 
-  if (authLoading || (loading && companies.length === 0 && invoices.length === 0)) {
+  if (loading && companies.length === 0 && invoices.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center animate-fade-in">

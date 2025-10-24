@@ -7,7 +7,6 @@ A professional freelance invoice generator built with React, Vite, and Cloudflar
 - **Professional Invoice Generation**: Create beautiful PDF invoices with automatic calculations
 - **Client Management**: Organize clients with detailed company profiles
 - **Payment Tracking**: Monitor invoice status (pending/paid) and revenue
-- **OAuth Authentication**: Secure login with Clerk (Google, Apple)
 - **Company Details Dashboard**: View and edit company information with invoice history
 - **Custom Invoice Numbering**: Set custom prefixes and starting numbers for each client
 - **Banking Details**: Store and display payment information on invoices
@@ -17,7 +16,6 @@ A professional freelance invoice generator built with React, Vite, and Cloudflar
 
 - **Frontend**: React 18, Vite 4
 - **UI Components**: shadcn/ui, Tailwind CSS
-- **Authentication**: Clerk (OAuth)
 - **Backend**: Cloudflare Pages Functions
 - **Database**: Cloudflare D1 (SQLite)
 - **PDF Generation**: jsPDF, jspdf-autotable
@@ -29,7 +27,6 @@ A professional freelance invoice generator built with React, Vite, and Cloudflar
 - Node.js 18+
 - npm or yarn
 - Cloudflare account (for deployment)
-- Clerk account (for authentication)
 
 ### Installation
 
@@ -44,14 +41,7 @@ cd PayMyHustle
 npm install
 ```
 
-3. Set up environment variables:
-
-Create a `.env.local` file in the root directory:
-```env
-VITE_CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key_here
-```
-
-4. Set up the database:
+3. Set up the database:
 ```bash
 wrangler d1 create paymyhustle-db
 wrangler d1 execute paymyhustle-db --local --file=./migrations/schema.sql
@@ -86,11 +76,7 @@ PayMyHustle/
 ├── src/
 │   ├── components/
 │   │   ├── InvoiceGeneratorAPI.jsx  # Main invoice component
-│   │   ├── auth/
-│   │   │   └── OAuthAuthWrapper.jsx # Authentication wrapper
 │   │   └── ui/                       # shadcn/ui components
-│   ├── contexts/
-│   │   └── ClerkAuthContext.jsx     # Auth context provider
 │   ├── lib/
 │   │   └── api.js                   # API client
 │   └── App.jsx
@@ -114,10 +100,6 @@ PayMyHustle/
 4. Add environment variables in Cloudflare dashboard
 5. Deploy!
 
-## Environment Variables
-
-- `VITE_CLERK_PUBLISHABLE_KEY`: Your Clerk publishable key for OAuth authentication
-
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
@@ -132,6 +114,5 @@ Anton Meijer
 
 ## Acknowledgments
 
-- Built with [Clerk](https://clerk.com) for authentication
 - UI components from [shadcn/ui](https://ui.shadcn.com)
 - Deployed on [Cloudflare Pages](https://pages.cloudflare.com)
