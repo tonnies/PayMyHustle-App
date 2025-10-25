@@ -170,9 +170,9 @@ const RevenueDashboard = ({ invoices, companies }) => {
   }, [filteredInvoices]);
 
   const formatCurrency = (value) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-ZA', {
       style: 'currency',
-      currency: 'USD',
+      currency: 'ZAR',
     }).format(value);
   };
 
