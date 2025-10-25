@@ -10,9 +10,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Badge } from "./ui/badge"
 import { Alert, AlertDescription } from "./ui/alert"
 import { Separator } from "./ui/separator"
-import { Plus, Trash2, Building, FileText, Settings, Download, X, Edit, Search, Home, User, CreditCard, Eye, Pencil, Check, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, Building, FileText, Settings, Download, X, Edit, Search, Home, User, CreditCard, Eye, Pencil, Check, ArrowLeft, TrendingUp } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import RevenueDashboard from './RevenueDashboard';
 
 const InvoiceGeneratorAPI = () => {
   const [currentView, setCurrentView] = useState('dashboard');
@@ -683,6 +684,15 @@ const InvoiceGeneratorAPI = () => {
           >
             <Home className="w-4 h-4 mr-2" />
             Dashboard
+          </Button>
+
+          <Button
+            variant={currentView === 'revenue' ? 'default' : 'ghost'}
+            className="w-full justify-start btn-press transition-smooth hover:translate-x-1"
+            onClick={() => setCurrentView('revenue')}
+          >
+            <TrendingUp className="w-4 h-4 mr-2" />
+            Revenue
           </Button>
 
           <Button
@@ -1818,6 +1828,7 @@ const InvoiceGeneratorAPI = () => {
           )}
 
           {currentView === 'dashboard' && renderDashboard()}
+          {currentView === 'revenue' && <RevenueDashboard invoices={invoices} companies={companies} />}
           {currentView === 'personalSettings' && renderPersonalSettings()}
           {currentView === 'bankingSettings' && renderBankingSettings()}
           {currentView === 'companySettings' && renderCompanySettings()}
