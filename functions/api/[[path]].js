@@ -3,6 +3,42 @@ import { generateId } from '../utils/generateId';
 import { hashPassword, verifyPassword } from '../utils/auth';
 import { corsHeaders, handleCors } from '../utils/cors';
 
+// Helper function to ensure user exists (for Cloudflare Access)
+async function ensureUserExists(env, userId, email = null) {
+  if (!userId) return null;
+
+  try {
+    // Check if user exists
+    const existingUser = await env.DB.prepare(
+      'SELECT id FROM users WHERE id = ?'
+    ).bind(userId).first();
+
+    if (existingUser) {
+      return userId;
+    }
+
+    // User doesn't exist, create them
+    // This is safe because Cloudflare Access handles actual authentication
+    const userEmail = email || `${userId}@cloudflare-access.local`;
+
+    await env.DB.prepare(`
+      INSERT INTO users (id, email, password_hash, created_at, updated_at)
+      VALUES (?, ?, '', datetime('now'), datetime('now'))
+    `).bind(userId, userEmail).run();
+
+    // Create default profile
+    await env.DB.prepare(`
+      INSERT INTO user_profiles (id, user_id, created_at, updated_at)
+      VALUES (?, ?, datetime('now'), datetime('now'))
+    `).bind(generateId(), userId).run();
+
+    return userId;
+  } catch (error) {
+    console.error('Error ensuring user exists:', error);
+    return userId; // Return userId anyway, let subsequent queries fail if needed
+  }
+}
+
 export async function onRequest(context) {
   const { request, env } = context;
   const url = new URL(request.url);
@@ -239,7 +275,7 @@ async function loginUser(request, env) {
 // Companies handlers
 async function handleCompanies(request, env, id, action) {
   const method = request.method;
-  const userId = request.headers.get('X-User-ID'); // Temporary auth method
+  let userId = request.headers.get('X-User-ID');
 
   if (!userId) {
     return new Response(JSON.stringify({ error: 'Authentication required' }), {
@@ -247,6 +283,9 @@ async function handleCompanies(request, env, id, action) {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
+
+  // Ensure user exists in database (auto-create for Cloudflare Access)
+  userId = await ensureUserExists(env, userId);
 
   switch (method) {
     case 'GET':
@@ -429,7 +468,7 @@ async function deleteCompany(env, userId, companyId) {
 // User profile handlers
 async function handleUser(request, env, action) {
   const method = request.method;
-  const userId = request.headers.get('X-User-ID');
+  let userId = request.headers.get('X-User-ID');
 
   if (!userId) {
     return new Response(JSON.stringify({ error: 'Authentication required' }), {
@@ -437,6 +476,9 @@ async function handleUser(request, env, action) {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
+
+  // Ensure user exists in database (auto-create for Cloudflare Access)
+  userId = await ensureUserExists(env, userId);
 
   switch (action) {
     case 'profile':
@@ -622,7 +664,7 @@ async function updateBankingDetails(request, env, userId) {
 // Invoice handlers
 async function handleInvoices(request, env, id, action) {
   const method = request.method;
-  const userId = request.headers.get('X-User-ID');
+  let userId = request.headers.get('X-User-ID');
 
   if (!userId) {
     return new Response(JSON.stringify({ error: 'Authentication required' }), {
@@ -630,6 +672,9 @@ async function handleInvoices(request, env, id, action) {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
+
+  // Ensure user exists in database (auto-create for Cloudflare Access)
+  userId = await ensureUserExists(env, userId);
 
   switch (method) {
     case 'GET':
@@ -1094,7 +1139,7 @@ async function generateInvoicePDF(env, userId, invoiceId) {
 // Recurring invoice handlers
 async function handleRecurringInvoices(request, env, id, action) {
   const method = request.method;
-  const userId = request.headers.get('X-User-ID');
+  let userId = request.headers.get('X-User-ID');
 
   if (!userId) {
     return new Response(JSON.stringify({ error: 'Authentication required' }), {
@@ -1102,6 +1147,9 @@ async function handleRecurringInvoices(request, env, id, action) {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
+
+  // Ensure user exists in database (auto-create for Cloudflare Access)
+  userId = await ensureUserExists(env, userId);
 
   switch (method) {
     case 'GET':

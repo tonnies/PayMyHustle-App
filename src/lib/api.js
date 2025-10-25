@@ -5,6 +5,28 @@ class ApiClient {
   constructor() {
     this.baseURL = API_BASE;
     this.userId = null;
+    this.initializeUser();
+  }
+
+  initializeUser() {
+    // Try to get user from localStorage
+    const storedUser = this.initializeFromStorage();
+    if (storedUser && storedUser.id) {
+      this.userId = storedUser.id;
+      return;
+    }
+
+    // If no stored user, create/use a default user ID
+    // Cloudflare Access will handle actual authentication
+    // This is just for API calls to work
+    const defaultUserId = 'cloudflare-access-user';
+    this.userId = defaultUserId;
+
+    // Store for persistence
+    localStorage.setItem('paymyhustle_user', JSON.stringify({
+      id: defaultUserId,
+      email: 'user@cloudflare-access'
+    }));
   }
 
   setUserId(userId) {
@@ -22,10 +44,8 @@ class ApiClient {
       ...options,
     };
 
-    // Add user authentication header if available
-    if (this.userId) {
-      config.headers['X-User-ID'] = this.userId;
-    }
+    // Always add user ID header (required by backend)
+    config.headers['X-User-ID'] = this.userId || 'cloudflare-access-user';
 
     try {
       const response = await fetch(url, config);
