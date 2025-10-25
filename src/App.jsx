@@ -1,12 +1,7 @@
 import InvoiceGeneratorAPI from './components/InvoiceGeneratorAPI';
-import AuthWrapper from './components/auth/AuthWrapper';
 
 function App() {
-  return (
-    <AuthWrapper>
-      <InvoiceGeneratorAPI />
-    </AuthWrapper>
-  );
+  return <InvoiceGeneratorAPI />;
 }
 
 export default App
