@@ -25,6 +25,8 @@ export async function onRequest(context) {
         return await handleCompanies(request, env, id, action);
       case 'invoices':
         return await handleInvoices(request, env, id, action);
+      case 'recurring-invoices':
+        return await handleRecurringInvoices(request, env, id, action);
       case 'user':
         return await handleUser(request, env, id);
       default:
@@ -1083,6 +1085,434 @@ async function generateInvoicePDF(env, userId, invoiceId) {
   } catch (error) {
     console.error('Generate PDF error:', error);
     return new Response(JSON.stringify({ error: 'Failed to generate PDF' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+// Recurring invoice handlers
+async function handleRecurringInvoices(request, env, id, action) {
+  const method = request.method;
+  const userId = request.headers.get('X-User-ID');
+
+  if (!userId) {
+    return new Response(JSON.stringify({ error: 'Authentication required' }), {
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+
+  switch (method) {
+    case 'GET':
+      if (id) {
+        return await getRecurringInvoice(env, userId, id);
+      }
+      return await getRecurringInvoices(env, userId);
+    case 'POST':
+      return await createRecurringInvoice(request, env, userId);
+    case 'PUT':
+      if (id && action === 'cancel') {
+        return await cancelRecurringInvoice(env, userId, id);
+      }
+      return await updateRecurringInvoice(request, env, userId, id);
+    case 'DELETE':
+      return await deleteRecurringInvoice(env, userId, id);
+  }
+
+  return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+    status: 405,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+  });
+}
+
+// Helper function to calculate future dates based on frequency
+function calculateRecurringDates(startDate, frequency, numberOfRecurrences) {
+  const dates = [];
+  const start = new Date(startDate);
+
+  for (let i = 0; i < numberOfRecurrences; i++) {
+    const date = new Date(start);
+
+    switch (frequency) {
+      case 'weekly':
+        date.setDate(start.getDate() + (i * 7));
+        break;
+      case 'monthly':
+        date.setMonth(start.getMonth() + i);
+        break;
+      case 'quarterly':
+        date.setMonth(start.getMonth() + (i * 3));
+        break;
+      case 'yearly':
+        date.setFullYear(start.getFullYear() + i);
+        break;
+    }
+
+    dates.push(date.toISOString().split('T')[0]);
+  }
+
+  return dates;
+}
+
+// Helper function to calculate due date (30 days from invoice date)
+function calculateDueDate(invoiceDate) {
+  const date = new Date(invoiceDate);
+  date.setDate(date.getDate() + 30);
+  return date.toISOString().split('T')[0];
+}
+
+// Get all recurring invoices for user
+async function getRecurringInvoices(env, userId) {
+  try {
+    const recurringInvoices = await env.DB.prepare(`
+      SELECT
+        ri.*,
+        c.name as company_name,
+        c.email as company_email,
+        c.address as company_address,
+        c.invoice_prefix as company_invoice_prefix,
+        c.invoice_count as company_invoice_count
+      FROM recurring_invoices ri
+      JOIN companies c ON ri.company_id = c.id
+      WHERE ri.user_id = ?
+      ORDER BY ri.created_at DESC
+    `).bind(userId).all();
+
+    // Parse line items from JSON
+    const recurringInvoicesWithItems = (recurringInvoices.results || []).map(ri => ({
+      ...ri,
+      lineItems: JSON.parse(ri.line_items || '[]')
+    }));
+
+    return new Response(JSON.stringify({ recurringInvoices: recurringInvoicesWithItems }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    console.error('Get recurring invoices error:', error);
+    return new Response(JSON.stringify({ error: 'Failed to fetch recurring invoices' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+// Get single recurring invoice
+async function getRecurringInvoice(env, userId, recurringInvoiceId) {
+  try {
+    const recurringInvoice = await env.DB.prepare(`
+      SELECT
+        ri.*,
+        c.name as company_name,
+        c.email as company_email,
+        c.address as company_address,
+        c.invoice_prefix as company_invoice_prefix,
+        c.invoice_count as company_invoice_count
+      FROM recurring_invoices ri
+      JOIN companies c ON ri.company_id = c.id
+      WHERE ri.id = ? AND ri.user_id = ?
+    `).bind(recurringInvoiceId, userId).first();
+
+    if (!recurringInvoice) {
+      return new Response(JSON.stringify({ error: 'Recurring invoice not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Parse line items from JSON
+    const recurringInvoiceWithItems = {
+      ...recurringInvoice,
+      lineItems: JSON.parse(recurringInvoice.line_items || '[]')
+    };
+
+    // Get generated invoices
+    const generatedInvoices = await env.DB.prepare(`
+      SELECT * FROM invoices
+      WHERE parent_recurring_invoice_id = ?
+      ORDER BY invoice_date ASC
+    `).bind(recurringInvoiceId).all();
+
+    recurringInvoiceWithItems.generatedInvoices = generatedInvoices.results || [];
+
+    return new Response(JSON.stringify({ recurringInvoice: recurringInvoiceWithItems }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    console.error('Get recurring invoice error:', error);
+    return new Response(JSON.stringify({ error: 'Failed to fetch recurring invoice' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+// Create recurring invoice and generate all future invoices
+async function createRecurringInvoice(request, env, userId) {
+  try {
+    const recurringData = await request.json();
+    const recurringInvoiceId = generateId();
+
+    // Validate required fields
+    if (!recurringData.companyId || !recurringData.frequency || !recurringData.numberOfRecurrences ||
+        !recurringData.startDate || !recurringData.lineItems?.length) {
+      return new Response(JSON.stringify({ error: 'Missing required fields' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Validate frequency
+    const validFrequencies = ['weekly', 'monthly', 'quarterly', 'yearly'];
+    if (!validFrequencies.includes(recurringData.frequency)) {
+      return new Response(JSON.stringify({ error: 'Invalid frequency. Must be weekly, monthly, quarterly, or yearly' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Get company details
+    const company = await env.DB.prepare(`
+      SELECT * FROM companies WHERE id = ? AND user_id = ?
+    `).bind(recurringData.companyId, userId).first();
+
+    if (!company) {
+      return new Response(JSON.stringify({ error: 'Company not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Create recurring invoice record
+    await env.DB.prepare(`
+      INSERT INTO recurring_invoices (
+        id, user_id, company_id, frequency, number_of_recurrences, start_date,
+        line_items, notes, status, generated_count, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', 0, datetime('now'), datetime('now'))
+    `).bind(
+      recurringInvoiceId, userId, recurringData.companyId, recurringData.frequency,
+      recurringData.numberOfRecurrences, recurringData.startDate,
+      JSON.stringify(recurringData.lineItems), recurringData.notes || null
+    ).run();
+
+    // Calculate all invoice dates
+    const invoiceDates = calculateRecurringDates(
+      recurringData.startDate,
+      recurringData.frequency,
+      recurringData.numberOfRecurrences
+    );
+
+    // Calculate total amount
+    const totalAmount = recurringData.lineItems.reduce((sum, item) => {
+      return sum + (item.quantity * item.rate);
+    }, 0);
+
+    // Generate all invoices
+    const generatedInvoices = [];
+    let currentInvoiceCount = company.invoice_count;
+
+    for (let i = 0; i < invoiceDates.length; i++) {
+      const invoiceId = generateId();
+      const invoiceDate = invoiceDates[i];
+      const dueDate = calculateDueDate(invoiceDate);
+      const invoiceNumber = `${company.invoice_prefix}${String(currentInvoiceCount + 1).padStart(3, '0')}`;
+
+      // Create invoice
+      await env.DB.prepare(`
+        INSERT INTO invoices (
+          id, user_id, company_id, invoice_number, invoice_date, due_date,
+          status, notes, total_amount, parent_recurring_invoice_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, datetime('now'), datetime('now'))
+      `).bind(
+        invoiceId, userId, recurringData.companyId, invoiceNumber,
+        invoiceDate, dueDate, recurringData.notes || null, totalAmount, recurringInvoiceId
+      ).run();
+
+      // Create line items for this invoice
+      for (const item of recurringData.lineItems) {
+        const lineItemId = generateId();
+        const amount = item.quantity * item.rate;
+
+        await env.DB.prepare(`
+          INSERT INTO invoice_line_items (
+            id, invoice_id, description, quantity, rate, amount, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+        `).bind(
+          lineItemId, invoiceId, item.description, item.quantity, item.rate, amount
+        ).run();
+      }
+
+      generatedInvoices.push({
+        id: invoiceId,
+        invoiceNumber,
+        invoiceDate,
+        dueDate
+      });
+
+      currentInvoiceCount++;
+    }
+
+    // Update company stats (invoice count and total revenue)
+    // Note: We only increment invoice_count, not total_revenue (since invoices are pending)
+    await env.DB.prepare(`
+      UPDATE companies
+      SET invoice_count = invoice_count + ?,
+          updated_at = datetime('now')
+      WHERE id = ? AND user_id = ?
+    `).bind(recurringData.numberOfRecurrences, recurringData.companyId, userId).run();
+
+    // Update recurring invoice generated count
+    await env.DB.prepare(`
+      UPDATE recurring_invoices
+      SET generated_count = ?,
+          status = 'completed',
+          updated_at = datetime('now')
+      WHERE id = ?
+    `).bind(recurringData.numberOfRecurrences, recurringInvoiceId).run();
+
+    return new Response(JSON.stringify({
+      success: true,
+      recurringInvoice: {
+        id: recurringInvoiceId,
+        ...recurringData
+      },
+      generatedInvoices
+    }), {
+      status: 201,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+
+  } catch (error) {
+    console.error('Create recurring invoice error:', error);
+    return new Response(JSON.stringify({ error: 'Failed to create recurring invoice' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+// Update recurring invoice
+async function updateRecurringInvoice(request, env, userId, recurringInvoiceId) {
+  try {
+    const recurringData = await request.json();
+
+    // Get existing recurring invoice
+    const existingRecurring = await env.DB.prepare(`
+      SELECT * FROM recurring_invoices WHERE id = ? AND user_id = ?
+    `).bind(recurringInvoiceId, userId).first();
+
+    if (!existingRecurring) {
+      return new Response(JSON.stringify({ error: 'Recurring invoice not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Update recurring invoice
+    await env.DB.prepare(`
+      UPDATE recurring_invoices
+      SET notes = ?,
+          updated_at = datetime('now')
+      WHERE id = ? AND user_id = ?
+    `).bind(
+      recurringData.notes !== undefined ? recurringData.notes : existingRecurring.notes,
+      recurringInvoiceId, userId
+    ).run();
+
+    return await getRecurringInvoice(env, userId, recurringInvoiceId);
+
+  } catch (error) {
+    console.error('Update recurring invoice error:', error);
+    return new Response(JSON.stringify({ error: 'Failed to update recurring invoice' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+// Cancel recurring invoice (sets status to cancelled, doesn't delete generated invoices)
+async function cancelRecurringInvoice(env, userId, recurringInvoiceId) {
+  try {
+    const existingRecurring = await env.DB.prepare(`
+      SELECT * FROM recurring_invoices WHERE id = ? AND user_id = ?
+    `).bind(recurringInvoiceId, userId).first();
+
+    if (!existingRecurring) {
+      return new Response(JSON.stringify({ error: 'Recurring invoice not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    await env.DB.prepare(`
+      UPDATE recurring_invoices
+      SET status = 'cancelled',
+          updated_at = datetime('now')
+      WHERE id = ? AND user_id = ?
+    `).bind(recurringInvoiceId, userId).run();
+
+    return new Response(JSON.stringify({
+      success: true,
+      message: 'Recurring invoice cancelled'
+    }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+
+  } catch (error) {
+    console.error('Cancel recurring invoice error:', error);
+    return new Response(JSON.stringify({ error: 'Failed to cancel recurring invoice' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+// Delete recurring invoice (also deletes all generated invoices)
+async function deleteRecurringInvoice(env, userId, recurringInvoiceId) {
+  try {
+    const existingRecurring = await env.DB.prepare(`
+      SELECT * FROM recurring_invoices WHERE id = ? AND user_id = ?
+    `).bind(recurringInvoiceId, userId).first();
+
+    if (!existingRecurring) {
+      return new Response(JSON.stringify({ error: 'Recurring invoice not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Delete all generated invoices and their line items (CASCADE will handle line items)
+    await env.DB.prepare(`
+      DELETE FROM invoices WHERE parent_recurring_invoice_id = ?
+    `).bind(recurringInvoiceId).run();
+
+    // Delete the recurring invoice
+    await env.DB.prepare(`
+      DELETE FROM recurring_invoices WHERE id = ? AND user_id = ?
+    `).bind(recurringInvoiceId, userId).run();
+
+    // Update company stats (decrement invoice count)
+    await env.DB.prepare(`
+      UPDATE companies
+      SET invoice_count = invoice_count - ?,
+          updated_at = datetime('now')
+      WHERE id = ? AND user_id = ?
+    `).bind(existingRecurring.number_of_recurrences, existingRecurring.company_id, userId).run();
+
+    return new Response(JSON.stringify({
+      success: true,
+      message: 'Recurring invoice and all generated invoices deleted'
+    }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+
+  } catch (error) {
+    console.error('Delete recurring invoice error:', error);
+    return new Response(JSON.stringify({ error: 'Failed to delete recurring invoice' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });

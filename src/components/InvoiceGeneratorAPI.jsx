@@ -18,6 +18,7 @@ const InvoiceGeneratorAPI = () => {
   const [currentView, setCurrentView] = useState('dashboard');
   const [companies, setCompanies] = useState([]);
   const [invoices, setInvoices] = useState([]);
+  const [recurringInvoices, setRecurringInvoices] = useState([]);
   const [personalDetails, setPersonalDetails] = useState({
     businessName: '',
     businessAddress: '',
@@ -64,6 +65,15 @@ const InvoiceGeneratorAPI = () => {
 
   const [editingCompanyData, setEditingCompanyData] = useState(null);
 
+  const [currentRecurringInvoice, setCurrentRecurringInvoice] = useState({
+    companyId: '',
+    frequency: 'monthly',
+    numberOfRecurrences: 6,
+    startDate: new Date().toISOString().split('T')[0],
+    lineItems: [{ description: '', quantity: 1, rate: 0 }],
+    notes: ''
+  });
+
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-ZA', {
       style: 'currency',
@@ -82,6 +92,7 @@ const InvoiceGeneratorAPI = () => {
       await Promise.all([
         loadCompanies(),
         loadInvoices(),
+        loadRecurringInvoices(),
         loadPersonalDetails(),
         loadBankingDetails()
       ]);
@@ -113,6 +124,15 @@ const InvoiceGeneratorAPI = () => {
       setInvoices(transformedInvoices);
     } catch (error) {
       console.error('Failed to load invoices:', error);
+    }
+  };
+
+  const loadRecurringInvoices = async () => {
+    try {
+      const result = await apiClient.getRecurringInvoices();
+      setRecurringInvoices(result.recurringInvoices || []);
+    } catch (error) {
+      console.error('Failed to load recurring invoices:', error);
     }
   };
 
@@ -322,6 +342,103 @@ const InvoiceGeneratorAPI = () => {
       showNotification(`Invoice marked as ${newStatus}`);
     } catch (error) {
       showNotification('Failed to update invoice status', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Recurring invoice functions
+  const addRecurringLineItem = () => {
+    setCurrentRecurringInvoice(prev => ({
+      ...prev,
+      lineItems: [...prev.lineItems, { description: '', quantity: 1, rate: 0 }]
+    }));
+  };
+
+  const removeRecurringLineItem = (index) => {
+    setCurrentRecurringInvoice(prev => ({
+      ...prev,
+      lineItems: prev.lineItems.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateRecurringLineItem = (index, field, value) => {
+    setCurrentRecurringInvoice(prev => ({
+      ...prev,
+      lineItems: prev.lineItems.map((item, i) =>
+        i === index ? { ...item, [field]: value } : item
+      )
+    }));
+  };
+
+  const calculateRecurringDates = () => {
+    const dates = [];
+    const start = new Date(currentRecurringInvoice.startDate);
+    const frequency = currentRecurringInvoice.frequency;
+    const count = currentRecurringInvoice.numberOfRecurrences;
+
+    for (let i = 0; i < count; i++) {
+      const date = new Date(start);
+
+      switch (frequency) {
+        case 'weekly':
+          date.setDate(start.getDate() + (i * 7));
+          break;
+        case 'monthly':
+          date.setMonth(start.getMonth() + i);
+          break;
+        case 'quarterly':
+          date.setMonth(start.getMonth() + (i * 3));
+          break;
+        case 'yearly':
+          date.setFullYear(start.getFullYear() + i);
+          break;
+      }
+
+      dates.push(date.toISOString().split('T')[0]);
+    }
+
+    return dates;
+  };
+
+  const saveRecurringInvoice = async () => {
+    if (!currentRecurringInvoice.companyId || !currentRecurringInvoice.lineItems.some(item => item.description)) {
+      showNotification('Please select a company and add at least one line item', 'error');
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const recurringData = {
+        companyId: currentRecurringInvoice.companyId,
+        frequency: currentRecurringInvoice.frequency,
+        numberOfRecurrences: parseInt(currentRecurringInvoice.numberOfRecurrences),
+        startDate: currentRecurringInvoice.startDate,
+        lineItems: currentRecurringInvoice.lineItems,
+        notes: currentRecurringInvoice.notes
+      };
+
+      const result = await apiClient.createRecurringInvoice(recurringData);
+      showNotification(`Recurring invoice created! Generated ${result.generatedInvoices.length} invoices`);
+
+      await loadInvoices();
+      await loadRecurringInvoices();
+      await loadCompanies();
+
+      setCurrentRecurringInvoice({
+        companyId: '',
+        frequency: 'monthly',
+        numberOfRecurrences: 6,
+        startDate: new Date().toISOString().split('T')[0],
+        lineItems: [{ description: '', quantity: 1, rate: 0 }],
+        notes: ''
+      });
+
+      setCurrentView('dashboard');
+
+    } catch (error) {
+      showNotification('Failed to create recurring invoice', 'error');
     } finally {
       setLoading(false);
     }
@@ -692,6 +809,15 @@ const InvoiceGeneratorAPI = () => {
           >
             <Plus className="w-4 h-4 mr-2" />
             Create Invoice
+          </Button>
+
+          <Button
+            variant={currentView === 'createRecurringInvoice' ? 'default' : 'ghost'}
+            className="w-full justify-start btn-press transition-smooth hover:translate-x-1"
+            onClick={() => setCurrentView('createRecurringInvoice')}
+          >
+            <FileText className="w-4 h-4 mr-2" />
+            Create Recurring Invoice
           </Button>
 
           <Separator className="my-4" />
@@ -1517,6 +1643,226 @@ const InvoiceGeneratorAPI = () => {
     </div>
   );
 
+  const renderCreateRecurringInvoice = () => {
+    const previewDates = calculateRecurringDates();
+    const total = calculateTotal(currentRecurringInvoice.lineItems);
+
+    return (
+      <div className="space-y-6 animate-fade-in-up">
+        <Card className="animate-scale-in">
+          <CardHeader>
+            <CardTitle>Create Recurring Invoice</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="recurringCompanySelect">Company *</Label>
+                <select
+                  id="recurringCompanySelect"
+                  value={currentRecurringInvoice.companyId}
+                  onChange={(e) => {
+                    const companyId = e.target.value;
+                    setCurrentRecurringInvoice(prev => ({
+                      ...prev,
+                      companyId
+                    }));
+                  }}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="">Select a company</option>
+                  {companies.map(company => (
+                    <option key={company.id} value={company.id}>
+                      {company.name}
+                    </option>
+                  ))}
+                </select>
+                {companies.length === 0 && (
+                  <p className="text-sm text-gray-500 mt-2">
+                    No companies available. <Button variant="link" onClick={() => setCurrentView('companySettings')} className="p-0 h-auto">Add a company first</Button>
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <Label htmlFor="frequency">Frequency *</Label>
+                <select
+                  id="frequency"
+                  value={currentRecurringInvoice.frequency}
+                  onChange={(e) => setCurrentRecurringInvoice(prev => ({...prev, frequency: e.target.value}))}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="quarterly">Quarterly</option>
+                  <option value="yearly">Yearly</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="numberOfRecurrences">Number of Recurrences *</Label>
+                <Input
+                  id="numberOfRecurrences"
+                  type="number"
+                  min="1"
+                  max="120"
+                  value={currentRecurringInvoice.numberOfRecurrences}
+                  onChange={(e) => setCurrentRecurringInvoice(prev => ({...prev, numberOfRecurrences: parseInt(e.target.value) || 1}))}
+                />
+                <p className="text-sm text-gray-500 mt-1">
+                  {currentRecurringInvoice.numberOfRecurrences} invoice{currentRecurringInvoice.numberOfRecurrences !== 1 ? 's' : ''} will be generated
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="startDate">Start Date *</Label>
+                <Input
+                  id="startDate"
+                  type="date"
+                  value={currentRecurringInvoice.startDate}
+                  onChange={(e) => setCurrentRecurringInvoice(prev => ({...prev, startDate: e.target.value}))}
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between items-center mb-4">
+                <Label>Line Items</Label>
+                <Button type="button" size="sm" onClick={addRecurringLineItem} className="btn-press transition-smooth hover:shadow-md">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Item
+                </Button>
+              </div>
+
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Description</TableHead>
+                    <TableHead className="w-20">Quantity</TableHead>
+                    <TableHead className="w-32">Rate (ZAR)</TableHead>
+                    <TableHead className="w-32">Amount</TableHead>
+                    <TableHead className="w-12"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {currentRecurringInvoice.lineItems.map((item, index) => (
+                    <TableRow key={index}>
+                      <TableCell>
+                        <Input
+                          value={item.description}
+                          onChange={(e) => updateRecurringLineItem(index, 'description', e.target.value)}
+                          placeholder="Service description"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          min="1"
+                          value={item.quantity}
+                          onChange={(e) => updateRecurringLineItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={item.rate}
+                          onChange={(e) => updateRecurringLineItem(index, 'rate', parseFloat(e.target.value) || 0)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {formatCurrency(item.quantity * item.rate)}
+                      </TableCell>
+                      <TableCell>
+                        {currentRecurringInvoice.lineItems.length > 1 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeRecurringLineItem(index)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              <div className="text-right mt-4">
+                <div className="text-lg font-semibold">
+                  Total per invoice: {formatCurrency(total)}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="recurringNotes">Notes (Optional)</Label>
+              <Textarea
+                id="recurringNotes"
+                value={currentRecurringInvoice.notes}
+                onChange={(e) => setCurrentRecurringInvoice(prev => ({...prev, notes: e.target.value}))}
+                rows={3}
+                placeholder="Additional notes or payment terms"
+              />
+            </div>
+
+            <Card className="bg-blue-50 border-blue-200">
+              <CardHeader>
+                <CardTitle className="text-sm">Invoice Preview</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-gray-600 mb-2">
+                  The following {previewDates.length} invoice{previewDates.length !== 1 ? 's' : ''} will be generated:
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {previewDates.slice(0, 12).map((date, index) => (
+                    <div key={index} className="text-sm bg-white p-2 rounded border">
+                      Invoice {index + 1}: {new Date(date).toLocaleDateString()}
+                    </div>
+                  ))}
+                </div>
+                {previewDates.length > 12 && (
+                  <p className="text-sm text-gray-500 mt-2">
+                    ...and {previewDates.length - 12} more
+                  </p>
+                )}
+                <p className="text-sm text-gray-600 mt-4">
+                  <strong>Total value:</strong> {formatCurrency(total * currentRecurringInvoice.numberOfRecurrences)}
+                </p>
+              </CardContent>
+            </Card>
+
+            <div className="flex gap-4">
+              <Button onClick={saveRecurringInvoice} disabled={loading} className="btn-press transition-smooth hover:shadow-lg">
+                {loading ? 'Creating...' : 'Create Recurring Invoice'}
+              </Button>
+              <Button
+                variant="outline"
+                className="btn-press transition-smooth"
+                onClick={() => {
+                  setCurrentView('dashboard');
+                  setCurrentRecurringInvoice({
+                    companyId: '',
+                    frequency: 'monthly',
+                    numberOfRecurrences: 6,
+                    startDate: new Date().toISOString().split('T')[0],
+                    lineItems: [{ description: '', quantity: 1, rate: 0 }],
+                    notes: ''
+                  });
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
   const renderCompanyDetails = () => {
     if (!selectedCompany) return null;
 
@@ -1822,6 +2168,7 @@ const InvoiceGeneratorAPI = () => {
           {currentView === 'bankingSettings' && renderBankingSettings()}
           {currentView === 'companySettings' && renderCompanySettings()}
           {currentView === 'createInvoice' && renderCreateInvoice()}
+          {currentView === 'createRecurringInvoice' && renderCreateRecurringInvoice()}
           {currentView === 'previewInvoice' && renderInvoicePreview()}
           {currentView === 'companyDetails' && renderCompanyDetails()}
         </main>

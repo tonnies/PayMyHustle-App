@@ -190,6 +190,41 @@ class ApiClient {
     });
   }
 
+  // Recurring invoice methods
+  async getRecurringInvoices() {
+    return this.request('/recurring-invoices');
+  }
+
+  async getRecurringInvoice(recurringInvoiceId) {
+    return this.request(`/recurring-invoices/${recurringInvoiceId}`);
+  }
+
+  async createRecurringInvoice(recurringInvoiceData) {
+    return this.request('/recurring-invoices', {
+      method: 'POST',
+      body: JSON.stringify(recurringInvoiceData),
+    });
+  }
+
+  async updateRecurringInvoice(recurringInvoiceId, recurringInvoiceData) {
+    return this.request(`/recurring-invoices/${recurringInvoiceId}`, {
+      method: 'PUT',
+      body: JSON.stringify(recurringInvoiceData),
+    });
+  }
+
+  async cancelRecurringInvoice(recurringInvoiceId) {
+    return this.request(`/recurring-invoices/${recurringInvoiceId}/cancel`, {
+      method: 'PUT',
+    });
+  }
+
+  async deleteRecurringInvoice(recurringInvoiceId) {
+    return this.request(`/recurring-invoices/${recurringInvoiceId}`, {
+      method: 'DELETE',
+    });
+  }
+
   // Utility methods for data transformation
   transformCompanyFromAPI(apiCompany) {
     return {
