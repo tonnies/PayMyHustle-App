@@ -7,8 +7,11 @@
   "scripts": {
     "dev": "vite",
     "dev:full": "npm run build && wrangler pages dev dist",
+    "dev:migrate": "./setup-local-db.sh && npm run build && wrangler pages dev dist --d1=DB=paymyhustle-db --port 8788",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "migrate": "wrangler d1 execute paymyhustle-db --local --file=./migrations/0001_initial_schema.sql && wrangler d1 execute paymyhustle-db --local --file=./migrations/0002_recurring_invoices.sql && wrangler d1 execute paymyhustle-db --local --file=./migrations/0003_multiple_banking_details.sql",
+    "migrate:remote": "wrangler d1 execute paymyhustle-db --remote --file=./migrations/0001_initial_schema.sql && wrangler d1 execute paymyhustle-db --remote --file=./migrations/0002_recurring_invoices.sql && wrangler d1 execute paymyhustle-db --remote --file=./migrations/0003_multiple_banking_details.sql"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.0",
