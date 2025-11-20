@@ -132,14 +132,33 @@ class ApiClient {
     });
   }
 
-  async getBankingDetails() {
+  async getAllBankingDetails() {
     return this.request('/user/banking');
   }
 
-  async updateBankingDetails(bankingData) {
+  async createBankingDetails(bankingData) {
     return this.request('/user/banking', {
+      method: 'POST',
+      body: JSON.stringify(bankingData),
+    });
+  }
+
+  async updateBankingDetails(bankingId, bankingData) {
+    return this.request(`/user/banking/${bankingId}`, {
       method: 'PUT',
       body: JSON.stringify(bankingData),
+    });
+  }
+
+  async deleteBankingDetails(bankingId) {
+    return this.request(`/user/banking/${bankingId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async setDefaultBankingDetails(bankingId) {
+    return this.request(`/user/banking/${bankingId}/set-default`, {
+      method: 'PUT',
     });
   }
 
@@ -325,23 +344,28 @@ class ApiClient {
 
   transformBankingFromAPI(apiBanking) {
     return {
+      id: apiBanking.id,
+      name: apiBanking.name || '',
       accountHolder: apiBanking.account_holder || '',
       bankName: apiBanking.bank_name || '',
       accountNumber: apiBanking.account_number || '',
       accountType: apiBanking.account_type || '',
       branchCode: apiBanking.branch_code || '',
       swiftCode: apiBanking.swift_code || '',
+      isDefault: apiBanking.is_default === 1,
     };
   }
 
   transformBankingToAPI(banking) {
     return {
+      name: banking.name,
       account_holder: banking.accountHolder,
       bank_name: banking.bankName,
       account_number: banking.accountNumber,
       account_type: banking.accountType,
       branch_code: banking.branchCode,
       swift_code: banking.swiftCode,
+      is_default: banking.isDefault ? 1 : 0,
     };
   }
 }
