@@ -480,14 +480,29 @@ async function handleUser(request, env, action) {
   // Ensure user exists in database (auto-create for Cloudflare Access)
   userId = await ensureUserExists(env, userId);
 
+  // Parse additional path segments for nested routes
+  const url = new URL(request.url);
+  const pathParts = url.pathname.replace('/api/user/', '').split('/');
+  const subAction = pathParts[1]; // e.g., banking/:id or banking/:id/set-default
+
   switch (action) {
     case 'profile':
       if (method === 'GET') return await getUserProfile(env, userId);
       if (method === 'PUT') return await updateUserProfile(request, env, userId);
       break;
     case 'banking':
-      if (method === 'GET') return await getBankingDetails(env, userId);
-      if (method === 'PUT') return await updateBankingDetails(request, env, userId);
+      if (method === 'GET' && !subAction) return await getAllBankingDetails(env, userId);
+      if (method === 'POST') return await createBankingDetails(request, env, userId);
+      if (method === 'PUT' && subAction) {
+        // Check if it's a set-default action
+        const bankingId = subAction;
+        const furtherAction = pathParts[2];
+        if (furtherAction === 'set-default') {
+          return await setDefaultBankingDetails(env, userId, bankingId);
+        }
+        return await updateBankingDetailsById(request, env, userId, bankingId);
+      }
+      if (method === 'DELETE' && subAction) return await deleteBankingDetails(env, userId, subAction);
       break;
   }
 
@@ -579,14 +594,14 @@ async function updateUserProfile(request, env, userId) {
   }
 }
 
-// Get banking details
-async function getBankingDetails(env, userId) {
+// Get all banking details for user
+async function getAllBankingDetails(env, userId) {
   try {
     const bankingDetails = await env.DB.prepare(`
-      SELECT * FROM banking_details WHERE user_id = ?
-    `).bind(userId).first();
+      SELECT * FROM banking_details WHERE user_id = ? ORDER BY is_default DESC, created_at DESC
+    `).bind(userId).all();
 
-    return new Response(JSON.stringify({ bankingDetails: bankingDetails || {} }), {
+    return new Response(JSON.stringify({ bankingDetails: bankingDetails.results || [] }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
@@ -599,54 +614,113 @@ async function getBankingDetails(env, userId) {
   }
 }
 
-// Update banking details
-async function updateBankingDetails(request, env, userId) {
+// Create new banking details
+async function createBankingDetails(request, env, userId) {
   try {
     const bankingData = await request.json();
 
-    // Check if banking details exist
-    const existingBanking = await env.DB.prepare(`
-      SELECT id FROM banking_details WHERE user_id = ?
+    if (!bankingData.name) {
+      return new Response(JSON.stringify({ error: 'Banking details name is required' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    const bankingId = generateId();
+
+    // Check if this should be the default (if it's the first one)
+    const existingCount = await env.DB.prepare(`
+      SELECT COUNT(*) as count FROM banking_details WHERE user_id = ?
     `).bind(userId).first();
 
-    if (existingBanking) {
-      // Update existing banking details
+    const isDefault = existingCount.count === 0 ? 1 : (bankingData.is_default ? 1 : 0);
+
+    // If setting as default, unset other defaults
+    if (isDefault) {
       await env.DB.prepare(`
-        UPDATE banking_details
-        SET account_holder = ?, bank_name = ?, account_number = ?,
-            account_type = ?, branch_code = ?, swift_code = ?, updated_at = datetime('now')
-        WHERE user_id = ?
-      `).bind(
-        bankingData.account_holder || null,
-        bankingData.bank_name || null,
-        bankingData.account_number || null,
-        bankingData.account_type || null,
-        bankingData.branch_code || null,
-        bankingData.swift_code || null,
-        userId
-      ).run();
-    } else {
-      // Create new banking details
-      const bankingId = generateId();
-      await env.DB.prepare(`
-        INSERT INTO banking_details (
-          id, user_id, account_holder, bank_name, account_number,
-          account_type, branch_code, swift_code, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-      `).bind(
-        bankingId, userId,
-        bankingData.account_holder || null,
-        bankingData.bank_name || null,
-        bankingData.account_number || null,
-        bankingData.account_type || null,
-        bankingData.branch_code || null,
-        bankingData.swift_code || null
-      ).run();
+        UPDATE banking_details SET is_default = 0 WHERE user_id = ?
+      `).bind(userId).run();
     }
+
+    await env.DB.prepare(`
+      INSERT INTO banking_details (
+        id, user_id, name, account_holder, bank_name, account_number,
+        account_type, branch_code, swift_code, is_default, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    `).bind(
+      bankingId, userId,
+      bankingData.name,
+      bankingData.account_holder || null,
+      bankingData.bank_name || null,
+      bankingData.account_number || null,
+      bankingData.account_type || null,
+      bankingData.branch_code || null,
+      bankingData.swift_code || null,
+      isDefault
+    ).run();
+
+    const created = await env.DB.prepare(`
+      SELECT * FROM banking_details WHERE id = ?
+    `).bind(bankingId).first();
 
     return new Response(JSON.stringify({
       success: true,
-      message: 'Banking details updated successfully'
+      bankingDetails: created
+    }), {
+      status: 201,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+
+  } catch (error) {
+    console.error('Create banking details error:', error);
+    return new Response(JSON.stringify({ error: 'Failed to create banking details' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+// Update banking details by ID
+async function updateBankingDetailsById(request, env, userId, bankingId) {
+  try {
+    const bankingData = await request.json();
+
+    // Verify banking details belong to user
+    const existingBanking = await env.DB.prepare(`
+      SELECT id FROM banking_details WHERE id = ? AND user_id = ?
+    `).bind(bankingId, userId).first();
+
+    if (!existingBanking) {
+      return new Response(JSON.stringify({ error: 'Banking details not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    await env.DB.prepare(`
+      UPDATE banking_details
+      SET name = ?, account_holder = ?, bank_name = ?, account_number = ?,
+          account_type = ?, branch_code = ?, swift_code = ?, updated_at = datetime('now')
+      WHERE id = ? AND user_id = ?
+    `).bind(
+      bankingData.name || null,
+      bankingData.account_holder || null,
+      bankingData.bank_name || null,
+      bankingData.account_number || null,
+      bankingData.account_type || null,
+      bankingData.branch_code || null,
+      bankingData.swift_code || null,
+      bankingId,
+      userId
+    ).run();
+
+    const updated = await env.DB.prepare(`
+      SELECT * FROM banking_details WHERE id = ?
+    `).bind(bankingId).first();
+
+    return new Response(JSON.stringify({
+      success: true,
+      bankingDetails: updated
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -655,6 +729,99 @@ async function updateBankingDetails(request, env, userId) {
   } catch (error) {
     console.error('Update banking details error:', error);
     return new Response(JSON.stringify({ error: 'Failed to update banking details' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+// Delete banking details
+async function deleteBankingDetails(env, userId, bankingId) {
+  try {
+    // Verify banking details belong to user
+    const existingBanking = await env.DB.prepare(`
+      SELECT id, is_default FROM banking_details WHERE id = ? AND user_id = ?
+    `).bind(bankingId, userId).first();
+
+    if (!existingBanking) {
+      return new Response(JSON.stringify({ error: 'Banking details not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Delete the banking details
+    await env.DB.prepare(`
+      DELETE FROM banking_details WHERE id = ? AND user_id = ?
+    `).bind(bankingId, userId).run();
+
+    // If deleted banking details was default, set another one as default
+    if (existingBanking.is_default) {
+      const remaining = await env.DB.prepare(`
+        SELECT id FROM banking_details WHERE user_id = ? LIMIT 1
+      `).bind(userId).first();
+
+      if (remaining) {
+        await env.DB.prepare(`
+          UPDATE banking_details SET is_default = 1 WHERE id = ?
+        `).bind(remaining.id).run();
+      }
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      message: 'Banking details deleted successfully'
+    }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+
+  } catch (error) {
+    console.error('Delete banking details error:', error);
+    return new Response(JSON.stringify({ error: 'Failed to delete banking details' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+// Set default banking details
+async function setDefaultBankingDetails(env, userId, bankingId) {
+  try {
+    // Verify banking details belong to user
+    const existingBanking = await env.DB.prepare(`
+      SELECT id FROM banking_details WHERE id = ? AND user_id = ?
+    `).bind(bankingId, userId).first();
+
+    if (!existingBanking) {
+      return new Response(JSON.stringify({ error: 'Banking details not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Unset all defaults for this user
+    await env.DB.prepare(`
+      UPDATE banking_details SET is_default = 0 WHERE user_id = ?
+    `).bind(userId).run();
+
+    // Set this one as default
+    await env.DB.prepare(`
+      UPDATE banking_details SET is_default = 1, updated_at = datetime('now')
+      WHERE id = ? AND user_id = ?
+    `).bind(bankingId, userId).run();
+
+    return new Response(JSON.stringify({
+      success: true,
+      message: 'Default banking details updated successfully'
+    }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+
+  } catch (error) {
+    console.error('Set default banking details error:', error);
+    return new Response(JSON.stringify({ error: 'Failed to set default banking details' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
@@ -712,9 +879,18 @@ async function getInvoices(env, userId) {
         c.email as company_email,
         c.address as company_address,
         c.contact_person as company_contact_person,
-        c.phone as company_phone
+        c.phone as company_phone,
+        b.id as banking_id,
+        b.name as banking_name,
+        b.account_holder as banking_account_holder,
+        b.bank_name as banking_bank_name,
+        b.account_number as banking_account_number,
+        b.account_type as banking_account_type,
+        b.branch_code as banking_branch_code,
+        b.swift_code as banking_swift_code
       FROM invoices i
       JOIN companies c ON i.company_id = c.id
+      LEFT JOIN banking_details b ON i.banking_details_id = b.id
       WHERE i.user_id = ?
       ORDER BY i.created_at DESC
     `).bind(userId).all();
@@ -756,9 +932,18 @@ async function getInvoice(env, userId, invoiceId) {
         c.email as company_email,
         c.address as company_address,
         c.contact_person as company_contact_person,
-        c.phone as company_phone
+        c.phone as company_phone,
+        b.id as banking_id,
+        b.name as banking_name,
+        b.account_holder as banking_account_holder,
+        b.bank_name as banking_bank_name,
+        b.account_number as banking_account_number,
+        b.account_type as banking_account_type,
+        b.branch_code as banking_branch_code,
+        b.swift_code as banking_swift_code
       FROM invoices i
       JOIN companies c ON i.company_id = c.id
+      LEFT JOIN banking_details b ON i.banking_details_id = b.id
       WHERE i.id = ? AND i.user_id = ?
     `).bind(invoiceId, userId).first();
 
@@ -810,16 +995,25 @@ async function createInvoice(request, env, userId) {
       return sum + (item.quantity * item.rate);
     }, 0);
 
+    // If no banking details specified, use the default one
+    let bankingDetailsId = invoiceData.bankingDetailsId || null;
+    if (!bankingDetailsId) {
+      const defaultBanking = await env.DB.prepare(`
+        SELECT id FROM banking_details WHERE user_id = ? AND is_default = 1 LIMIT 1
+      `).bind(userId).first();
+      bankingDetailsId = defaultBanking?.id || null;
+    }
+
     // Create invoice
     await env.DB.prepare(`
       INSERT INTO invoices (
         id, user_id, company_id, invoice_number, invoice_date, due_date,
-        status, notes, total_amount, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        status, notes, total_amount, banking_details_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
     `).bind(
       invoiceId, userId, invoiceData.companyId, invoiceData.invoiceNumber,
       invoiceData.invoiceDate, invoiceData.dueDate, invoiceData.status || 'pending',
-      invoiceData.notes || null, totalAmount
+      invoiceData.notes || null, totalAmount, bankingDetailsId
     ).run();
 
     // Create line items

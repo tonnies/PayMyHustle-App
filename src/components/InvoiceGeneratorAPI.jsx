@@ -28,7 +28,11 @@ const InvoiceGeneratorAPI = () => {
     website: '',
     footerText: 'Thank you for your business!'
   });
-  const [bankingDetails, setBankingDetails] = useState({
+  const [bankingDetailsList, setBankingDetailsList] = useState([]);
+  const [editingBankingDetails, setEditingBankingDetails] = useState(null);
+  const [showAddBankingForm, setShowAddBankingForm] = useState(false);
+  const [newBankingData, setNewBankingData] = useState({
+    name: '',
     accountHolder: '',
     bankName: '',
     accountNumber: '',
@@ -47,7 +51,8 @@ const InvoiceGeneratorAPI = () => {
     dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     lineItems: [{ description: '', quantity: 1, rate: 0 }],
     notes: '',
-    status: 'pending'
+    status: 'pending',
+    bankingDetailsId: ''
   });
 
   const [loading, setLoading] = useState(false);
@@ -150,10 +155,11 @@ const InvoiceGeneratorAPI = () => {
 
   const loadBankingDetails = async () => {
     try {
-      const result = await apiClient.getBankingDetails();
-      if (result.bankingDetails) {
-        setBankingDetails(apiClient.transformBankingFromAPI(result.bankingDetails));
-      }
+      const result = await apiClient.getAllBankingDetails();
+      const transformedBanking = (result.bankingDetails || []).map(banking =>
+        apiClient.transformBankingFromAPI(banking)
+      );
+      setBankingDetailsList(transformedBanking);
     } catch (error) {
       console.error('Failed to load banking details:', error);
     }
@@ -299,7 +305,8 @@ const InvoiceGeneratorAPI = () => {
           dueDate: currentInvoice.dueDate,
           status: currentInvoice.status,
           notes: currentInvoice.notes,
-          lineItems: currentInvoice.lineItems
+          lineItems: currentInvoice.lineItems,
+          bankingDetailsId: currentInvoice.bankingDetailsId || null
         };
 
         await apiClient.createInvoice(invoiceData);
@@ -320,7 +327,8 @@ const InvoiceGeneratorAPI = () => {
         dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         lineItems: [{ description: '', quantity: 1, rate: 0 }],
         notes: '',
-        status: 'pending'
+        status: 'pending',
+        bankingDetailsId: ''
       });
       setEditingInvoice(null);
       setCurrentView('dashboard');
@@ -738,33 +746,39 @@ const InvoiceGeneratorAPI = () => {
       doc.setTextColor(...black);
       doc.text(formatCurrency(total), totalValueX, yPos, { align: 'right' });
 
-      // PAY BY BANK TRANSFER section
-      yPos += 25;
-      addText('PAY BY BANK TRANSFER', margin, yPos, 12, true);
-      yPos += 8;
+      // PAY BY BANK TRANSFER section - use invoice's selected banking details
+      const bankingDetails = invoice.bankingDetailsId
+        ? bankingDetailsList.find(b => b.id === invoice.bankingDetailsId)
+        : bankingDetailsList.find(b => b.isDefault);
 
-      if (bankingDetails.bankName) {
-        addText(`Bank Name: ${bankingDetails.bankName}`, margin, yPos, 10, false);
-        yPos += 6;
+      if (bankingDetails) {
+        yPos += 25;
+        addText('PAY BY BANK TRANSFER', margin, yPos, 12, true);
+        yPos += 8;
+
+        if (bankingDetails.bankName) {
+          addText(`Bank Name: ${bankingDetails.bankName}`, margin, yPos, 10, false);
+          yPos += 6;
+        }
+        if (bankingDetails.accountHolder) {
+          addText(`Account Holder Name: ${bankingDetails.accountHolder}`, margin, yPos, 10, false);
+          yPos += 6;
+        }
+        if (bankingDetails.accountNumber) {
+          addText(`Account Number: ${bankingDetails.accountNumber}`, margin, yPos, 10, false);
+          yPos += 6;
+        }
+        if (bankingDetails.accountType) {
+          addText(`Account Type: ${bankingDetails.accountType}`, margin, yPos, 10, false);
+          yPos += 6;
+        }
+        if (bankingDetails.branchCode) {
+          addText(`Branch Code: ${bankingDetails.branchCode}`, margin, yPos, 10, false);
+          yPos += 6;
+        }
+        // Add payment reference (invoice number)
+        addText(`Payment Reference: ${invoice.invoiceNumber}`, margin, yPos, 10, false);
       }
-      if (bankingDetails.accountHolder) {
-        addText(`Account Holder Name: ${bankingDetails.accountHolder}`, margin, yPos, 10, false);
-        yPos += 6;
-      }
-      if (bankingDetails.accountNumber) {
-        addText(`Account Number: ${bankingDetails.accountNumber}`, margin, yPos, 10, false);
-        yPos += 6;
-      }
-      if (bankingDetails.accountType) {
-        addText(`Account Type: ${bankingDetails.accountType}`, margin, yPos, 10, false);
-        yPos += 6;
-      }
-      if (bankingDetails.branchCode) {
-        addText(`Branch Code: ${bankingDetails.branchCode}`, margin, yPos, 10, false);
-        yPos += 6;
-      }
-      // Add payment reference (invoice number)
-      addText(`Payment Reference: ${invoice.invoiceNumber}`, margin, yPos, 10, false);
 
       // Footer at bottom center
       const footerY = pageHeight - 20;
@@ -1117,67 +1131,328 @@ const InvoiceGeneratorAPI = () => {
     </div>
   );
 
+  // Banking Details Management Functions
+  const handleCreateBankingDetails = async () => {
+    if (!newBankingData.name.trim()) {
+      showNotification('Please enter a name for this banking details', 'error');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const bankingData = apiClient.transformBankingToAPI(newBankingData);
+      await apiClient.createBankingDetails(bankingData);
+      await loadBankingDetails();
+      setNewBankingData({
+        name: '',
+        accountHolder: '',
+        bankName: '',
+        accountNumber: '',
+        accountType: '',
+        branchCode: '',
+        swiftCode: ''
+      });
+      setShowAddBankingForm(false);
+      showNotification('Banking details added successfully');
+    } catch (error) {
+      showNotification('Failed to create banking details', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateBankingDetails = async (bankingId) => {
+    if (!editingBankingDetails || !editingBankingDetails.name.trim()) {
+      showNotification('Please enter a name for this banking details', 'error');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const bankingData = apiClient.transformBankingToAPI(editingBankingDetails);
+      await apiClient.updateBankingDetails(bankingId, bankingData);
+      await loadBankingDetails();
+      setEditingBankingDetails(null);
+      showNotification('Banking details updated successfully');
+    } catch (error) {
+      showNotification('Failed to update banking details', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteBankingDetails = async (banking) => {
+    if (!window.confirm(`Are you sure you want to delete "${banking.name}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await apiClient.deleteBankingDetails(banking.id);
+      await loadBankingDetails();
+      showNotification('Banking details deleted successfully');
+    } catch (error) {
+      showNotification('Failed to delete banking details', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSetDefaultBanking = async (bankingId) => {
+    try {
+      setLoading(true);
+      await apiClient.setDefaultBankingDetails(bankingId);
+      await loadBankingDetails();
+      showNotification('Default banking details updated');
+    } catch (error) {
+      showNotification('Failed to set default banking details', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Banking Settings component
   const renderBankingSettings = () => (
     <div className="space-y-6 animate-fade-in-up">
       <Card className="animate-scale-in">
         <CardHeader>
-          <CardTitle>Banking Details</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <CreditCard className="w-5 h-5" />
+              Banking Details
+            </CardTitle>
+            <Button onClick={() => setShowAddBankingForm(true)} className="btn-press transition-smooth hover:shadow-md">
+              <Plus className="w-4 h-4 mr-2" />
+              Add Banking Details
+            </Button>
+          </div>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="accountHolder">Account Holder</Label>
-            <Input
-              id="accountHolder"
-              value={bankingDetails.accountHolder}
-              onChange={(e) => setBankingDetails(prev => ({...prev, accountHolder: e.target.value}))}
-            />
-          </div>
-          <div>
-            <Label htmlFor="bankName">Bank Name</Label>
-            <Input
-              id="bankName"
-              value={bankingDetails.bankName}
-              onChange={(e) => setBankingDetails(prev => ({...prev, bankName: e.target.value}))}
-            />
-          </div>
-          <div>
-            <Label htmlFor="accountNumber">Account Number</Label>
-            <Input
-              id="accountNumber"
-              value={bankingDetails.accountNumber}
-              onChange={(e) => setBankingDetails(prev => ({...prev, accountNumber: e.target.value}))}
-            />
-          </div>
-          <div>
-            <Label htmlFor="accountType">Account Type</Label>
-            <Input
-              id="accountType"
-              value={bankingDetails.accountType}
-              onChange={(e) => setBankingDetails(prev => ({...prev, accountType: e.target.value}))}
-            />
-          </div>
-          <div>
-            <Label htmlFor="branchCode">Branch Code</Label>
-            <Input
-              id="branchCode"
-              value={bankingDetails.branchCode}
-              onChange={(e) => setBankingDetails(prev => ({...prev, branchCode: e.target.value}))}
-            />
-          </div>
-          <div>
-            <Label htmlFor="swiftCode">SWIFT Code (Optional)</Label>
-            <Input
-              id="swiftCode"
-              value={bankingDetails.swiftCode}
-              onChange={(e) => setBankingDetails(prev => ({...prev, swiftCode: e.target.value}))}
-            />
-          </div>
-          <Button onClick={saveBankingDetails} className="w-full btn-press transition-smooth hover:shadow-lg" disabled={loading}>
-            {loading ? 'Saving...' : 'Save Banking Details'}
-          </Button>
+        <CardContent>
+          {bankingDetailsList.length > 0 ? (
+            <div className="space-y-4">
+              {bankingDetailsList.map((banking) => (
+                <Card key={banking.id} className={`hover-lift ${banking.isDefault ? 'border-primary border-2' : ''}`}>
+                  <CardContent className="p-4">
+                    {editingBankingDetails?.id === banking.id ? (
+                      <div className="space-y-4">
+                        <div>
+                          <Label htmlFor="edit-banking-name">Name *</Label>
+                          <Input
+                            id="edit-banking-name"
+                            value={editingBankingDetails.name}
+                            onChange={(e) => setEditingBankingDetails(prev => ({...prev, name: e.target.value}))}
+                            placeholder="e.g., Business Account, Personal Account"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="edit-accountHolder">Account Holder</Label>
+                          <Input
+                            id="edit-accountHolder"
+                            value={editingBankingDetails.accountHolder}
+                            onChange={(e) => setEditingBankingDetails(prev => ({...prev, accountHolder: e.target.value}))}
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="edit-bankName">Bank Name</Label>
+                          <Input
+                            id="edit-bankName"
+                            value={editingBankingDetails.bankName}
+                            onChange={(e) => setEditingBankingDetails(prev => ({...prev, bankName: e.target.value}))}
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="edit-accountNumber">Account Number</Label>
+                          <Input
+                            id="edit-accountNumber"
+                            value={editingBankingDetails.accountNumber}
+                            onChange={(e) => setEditingBankingDetails(prev => ({...prev, accountNumber: e.target.value}))}
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="edit-accountType">Account Type</Label>
+                          <Input
+                            id="edit-accountType"
+                            value={editingBankingDetails.accountType}
+                            onChange={(e) => setEditingBankingDetails(prev => ({...prev, accountType: e.target.value}))}
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="edit-branchCode">Branch Code</Label>
+                          <Input
+                            id="edit-branchCode"
+                            value={editingBankingDetails.branchCode}
+                            onChange={(e) => setEditingBankingDetails(prev => ({...prev, branchCode: e.target.value}))}
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="edit-swiftCode">SWIFT Code (Optional)</Label>
+                          <Input
+                            id="edit-swiftCode"
+                            value={editingBankingDetails.swiftCode}
+                            onChange={(e) => setEditingBankingDetails(prev => ({...prev, swiftCode: e.target.value}))}
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <Button onClick={() => handleUpdateBankingDetails(banking.id)} disabled={loading}>
+                            {loading ? 'Saving...' : 'Save Changes'}
+                          </Button>
+                          <Button variant="outline" onClick={() => setEditingBankingDetails(null)}>
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <h3 className="font-semibold text-lg">{banking.name}</h3>
+                            {banking.isDefault && (
+                              <Badge variant="default" className="mt-1">Default</Badge>
+                            )}
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setEditingBankingDetails(banking)}
+                              title="Edit"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteBankingDetails(banking)}
+                              title="Delete"
+                              className="hover:text-red-600"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="space-y-2 text-sm">
+                          {banking.bankName && <p><span className="text-gray-600">Bank:</span> {banking.bankName}</p>}
+                          {banking.accountHolder && <p><span className="text-gray-600">Account Holder:</span> {banking.accountHolder}</p>}
+                          {banking.accountNumber && <p><span className="text-gray-600">Account Number:</span> {banking.accountNumber}</p>}
+                          {banking.accountType && <p><span className="text-gray-600">Account Type:</span> {banking.accountType}</p>}
+                          {banking.branchCode && <p><span className="text-gray-600">Branch Code:</span> {banking.branchCode}</p>}
+                        </div>
+                        {!banking.isDefault && (
+                          <div className="mt-3">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleSetDefaultBanking(banking.id)}
+                              disabled={loading}
+                            >
+                              Set as Default
+                            </Button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-500">
+              No banking details yet. Click "Add Banking Details" to create your first one.
+            </p>
+          )}
         </CardContent>
       </Card>
+
+      {/* Add Banking Details Dialog */}
+      <Dialog open={showAddBankingForm} onOpenChange={setShowAddBankingForm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Banking Details</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="new-banking-name">Name *</Label>
+              <Input
+                id="new-banking-name"
+                value={newBankingData.name}
+                onChange={(e) => setNewBankingData(prev => ({...prev, name: e.target.value}))}
+                placeholder="e.g., Business Account, Personal Account"
+              />
+            </div>
+            <div>
+              <Label htmlFor="new-accountHolder">Account Holder</Label>
+              <Input
+                id="new-accountHolder"
+                value={newBankingData.accountHolder}
+                onChange={(e) => setNewBankingData(prev => ({...prev, accountHolder: e.target.value}))}
+              />
+            </div>
+            <div>
+              <Label htmlFor="new-bankName">Bank Name</Label>
+              <Input
+                id="new-bankName"
+                value={newBankingData.bankName}
+                onChange={(e) => setNewBankingData(prev => ({...prev, bankName: e.target.value}))}
+              />
+            </div>
+            <div>
+              <Label htmlFor="new-accountNumber">Account Number</Label>
+              <Input
+                id="new-accountNumber"
+                value={newBankingData.accountNumber}
+                onChange={(e) => setNewBankingData(prev => ({...prev, accountNumber: e.target.value}))}
+              />
+            </div>
+            <div>
+              <Label htmlFor="new-accountType">Account Type</Label>
+              <Input
+                id="new-accountType"
+                value={newBankingData.accountType}
+                onChange={(e) => setNewBankingData(prev => ({...prev, accountType: e.target.value}))}
+                placeholder="e.g., Business Checking, Savings"
+              />
+            </div>
+            <div>
+              <Label htmlFor="new-branchCode">Branch Code</Label>
+              <Input
+                id="new-branchCode"
+                value={newBankingData.branchCode}
+                onChange={(e) => setNewBankingData(prev => ({...prev, branchCode: e.target.value}))}
+              />
+            </div>
+            <div>
+              <Label htmlFor="new-swiftCode">SWIFT Code (Optional)</Label>
+              <Input
+                id="new-swiftCode"
+                value={newBankingData.swiftCode}
+                onChange={(e) => setNewBankingData(prev => ({...prev, swiftCode: e.target.value}))}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowAddBankingForm(false);
+                setNewBankingData({
+                  name: '',
+                  accountHolder: '',
+                  bankName: '',
+                  accountNumber: '',
+                  accountType: '',
+                  branchCode: '',
+                  swiftCode: ''
+                });
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleCreateBankingDetails} disabled={loading}>
+              {loading ? 'Adding...' : 'Add Banking Details'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 
@@ -1442,29 +1717,38 @@ const InvoiceGeneratorAPI = () => {
             </div>
 
             {/* Banking Details */}
-            {(bankingDetails.accountHolder || bankingDetails.bankName) && (
-              <div className="mt-6">
-                <h3 className="font-bold text-black mb-3 text-sm">PAY BY BANK TRANSFER</h3>
-                <div className="space-y-1 text-sm">
-                  {bankingDetails.bankName && (
-                    <p className="text-black">Bank Name: {bankingDetails.bankName}</p>
-                  )}
-                  {bankingDetails.accountHolder && (
-                    <p className="text-black">Account Holder Name: {bankingDetails.accountHolder}</p>
-                  )}
-                  {bankingDetails.accountNumber && (
-                    <p className="text-black">Account Number: {bankingDetails.accountNumber}</p>
-                  )}
-                  {bankingDetails.accountType && (
-                    <p className="text-black">Account Type: {bankingDetails.accountType}</p>
-                  )}
-                  {bankingDetails.branchCode && (
-                    <p className="text-black">Branch Code: {bankingDetails.branchCode}</p>
-                  )}
-                  <p className="text-black">Payment Reference: {previewInvoice.invoiceNumber}</p>
+            {(() => {
+              const bankingDetails = previewInvoice.bankingDetailsId
+                ? bankingDetailsList.find(b => b.id === previewInvoice.bankingDetailsId)
+                : bankingDetailsList.find(b => b.isDefault);
+
+              return bankingDetails && (bankingDetails.accountHolder || bankingDetails.bankName) && (
+                <div className="mt-6">
+                  <h3 className="font-bold text-black mb-3 text-sm">PAY BY BANK TRANSFER</h3>
+                  <div className="space-y-1 text-sm">
+                    {bankingDetails.name && (
+                      <p className="text-black font-semibold">{bankingDetails.name}</p>
+                    )}
+                    {bankingDetails.bankName && (
+                      <p className="text-black">Bank Name: {bankingDetails.bankName}</p>
+                    )}
+                    {bankingDetails.accountHolder && (
+                      <p className="text-black">Account Holder Name: {bankingDetails.accountHolder}</p>
+                    )}
+                    {bankingDetails.accountNumber && (
+                      <p className="text-black">Account Number: {bankingDetails.accountNumber}</p>
+                    )}
+                    {bankingDetails.accountType && (
+                      <p className="text-black">Account Type: {bankingDetails.accountType}</p>
+                    )}
+                    {bankingDetails.branchCode && (
+                      <p className="text-black">Branch Code: {bankingDetails.branchCode}</p>
+                    )}
+                    <p className="text-black">Payment Reference: {previewInvoice.invoiceNumber}</p>
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Notes */}
             {previewInvoice.notes && (
@@ -1565,6 +1849,28 @@ const InvoiceGeneratorAPI = () => {
                 onChange={(e) => setCurrentInvoice(prev => ({...prev, dueDate: e.target.value}))}
               />
             </div>
+          </div>
+
+          <div>
+            <Label htmlFor="bankingDetailsSelect">Banking Details (Optional)</Label>
+            <select
+              id="bankingDetailsSelect"
+              value={currentInvoice.bankingDetailsId}
+              onChange={(e) => setCurrentInvoice(prev => ({...prev, bankingDetailsId: e.target.value}))}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <option value="">Use Default Banking Details</option>
+              {bankingDetailsList.map(banking => (
+                <option key={banking.id} value={banking.id}>
+                  {banking.name} {banking.isDefault ? '(Default)' : ''}
+                </option>
+              ))}
+            </select>
+            {bankingDetailsList.length === 0 && (
+              <p className="text-sm text-gray-500 mt-2">
+                No banking details available. <Button variant="link" onClick={() => setCurrentView('bankingSettings')} className="p-0 h-auto">Add banking details first</Button>
+              </p>
+            )}
           </div>
 
           <div>
@@ -1671,7 +1977,8 @@ const InvoiceGeneratorAPI = () => {
                   dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
                   lineItems: [{ description: '', quantity: 1, rate: 0 }],
                   notes: '',
-                  status: 'pending'
+                  status: 'pending',
+                  bankingDetailsId: ''
                 });
               }}
             >
