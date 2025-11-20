@@ -496,6 +496,36 @@ const InvoiceGeneratorAPI = () => {
     }
   };
 
+  const handleDeleteCompany = async (company) => {
+    const companyInvoices = invoices.filter(inv => inv.companyId === company.id);
+
+    const confirmMessage = companyInvoices.length > 0
+      ? `Are you sure you want to delete "${company.name}"? This will also delete ${companyInvoices.length} associated invoice(s). This action cannot be undone.`
+      : `Are you sure you want to delete "${company.name}"? This action cannot be undone.`;
+
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await apiClient.deleteCompany(company.id);
+      await loadCompanies();
+      await loadInvoices(); // Reload invoices as they may have been deleted too
+
+      // Navigate back to dashboard
+      setSelectedCompany(null);
+      setEditingCompanyData(null);
+      setCurrentView('dashboard');
+
+      showNotification('Company deleted successfully');
+    } catch (error) {
+      showNotification('Failed to delete company', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const savePersonalDetails = async () => {
     try {
       setLoading(true);
@@ -2036,6 +2066,17 @@ const InvoiceGeneratorAPI = () => {
                   <div>
                     <p className="text-sm text-gray-600">Next Invoice Number</p>
                     <p className="font-semibold">{generateInvoiceNumber(selectedCompany)}</p>
+                  </div>
+                  <div className="pt-4 border-t">
+                    <Button
+                      variant="destructive"
+                      className="w-full btn-press transition-smooth hover:shadow-md"
+                      onClick={() => handleDeleteCompany(selectedCompany)}
+                      disabled={loading}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Delete Company
+                    </Button>
                   </div>
                 </>
               )}
