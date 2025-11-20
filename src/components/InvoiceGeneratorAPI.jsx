@@ -291,7 +291,8 @@ const InvoiceGeneratorAPI = () => {
           dueDate: currentInvoice.dueDate,
           status: currentInvoice.status,
           notes: currentInvoice.notes,
-          lineItems: currentInvoice.lineItems
+          lineItems: currentInvoice.lineItems,
+          bankingDetailsId: currentInvoice.bankingDetailsId || null
         });
         showNotification('Invoice updated successfully');
       } else {
@@ -451,6 +452,26 @@ const InvoiceGeneratorAPI = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleEditInvoice = (invoice) => {
+    // Populate the form with the invoice data
+    setCurrentInvoice({
+      id: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      companyId: invoice.companyId,
+      companyName: invoice.companyName,
+      companyAddress: invoice.companyAddress,
+      companyEmail: invoice.companyEmail,
+      invoiceDate: invoice.invoiceDate,
+      dueDate: invoice.dueDate,
+      lineItems: invoice.lineItems,
+      notes: invoice.notes || '',
+      status: invoice.status,
+      bankingDetailsId: invoice.bankingDetailsId || ''
+    });
+    setEditingInvoice(invoice);
+    setCurrentView('createInvoice');
   };
 
   const handleDeleteInvoice = async (invoice) => {
@@ -1033,6 +1054,18 @@ const InvoiceGeneratorAPI = () => {
                                 className="btn-press transition-smooth hover:scale-110"
                               >
                                 <Eye className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEditInvoice(invoice);
+                                }}
+                                title="Edit"
+                                className="btn-press transition-smooth hover:text-blue-600 hover:scale-110"
+                              >
+                                <Pencil className="w-4 h-4" />
                               </Button>
                               <Button
                                 variant="ghost"
@@ -2450,6 +2483,31 @@ const InvoiceGeneratorAPI = () => {
                                 className="btn-press transition-smooth hover:scale-110"
                               >
                                 <Download className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPreviewInvoice(invoice);
+                                  setCurrentView('previewInvoice');
+                                }}
+                                title="Preview"
+                                className="btn-press transition-smooth hover:scale-110"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEditInvoice(invoice);
+                                }}
+                                title="Edit"
+                                className="btn-press transition-smooth hover:text-blue-600 hover:scale-110"
+                              >
+                                <Pencil className="w-4 h-4" />
                               </Button>
                               <Button
                                 variant="ghost"

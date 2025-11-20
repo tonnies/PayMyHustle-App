@@ -1082,7 +1082,7 @@ async function updateInvoice(request, env, userId, invoiceId) {
     await env.DB.prepare(`
       UPDATE invoices
       SET invoice_date = ?, due_date = ?, status = ?, notes = ?,
-          total_amount = ?, updated_at = datetime('now')
+          total_amount = ?, banking_details_id = ?, updated_at = datetime('now')
       WHERE id = ? AND user_id = ?
     `).bind(
       invoiceData.invoiceDate || existingInvoice.invoice_date,
@@ -1090,6 +1090,7 @@ async function updateInvoice(request, env, userId, invoiceId) {
       invoiceData.status || existingInvoice.status,
       invoiceData.notes !== undefined ? invoiceData.notes : existingInvoice.notes,
       totalAmount,
+      invoiceData.bankingDetailsId !== undefined ? invoiceData.bankingDetailsId : existingInvoice.banking_details_id,
       invoiceId, userId
     ).run();
 
