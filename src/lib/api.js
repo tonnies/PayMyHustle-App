@@ -301,6 +301,7 @@ class ApiClient {
       lineItems: apiInvoice.lineItems || [],
       status: apiInvoice.status,
       notes: apiInvoice.notes,
+      bankingDetailsId: apiInvoice.banking_details_id,
     };
   }
 
@@ -312,6 +313,7 @@ class ApiClient {
       dueDate: invoice.dueDate,
       status: invoice.status || 'pending',
       notes: invoice.notes || '',
+      bankingDetailsId: invoice.bankingDetailsId || null,
       lineItems: invoice.lineItems.map(item => ({
         description: item.description,
         quantity: item.quantity,
